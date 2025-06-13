@@ -1,4 +1,4 @@
-# Terraform Provide for gcrane
+# Terraform Provider for gcrane
 
 Terraform provider for [gcrane](https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md).
 

@@ -43,6 +43,7 @@ func (p *GcraneProvider) Metadata(ctx context.Context, req provider.MetadataRequ
 
 func (p *GcraneProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Terraform provider for gcrane.",
 		Attributes: map[string]schema.Attribute{
 			"docker_config": schema.StringAttribute{
 				MarkdownDescription: "Contents of docker.config",
