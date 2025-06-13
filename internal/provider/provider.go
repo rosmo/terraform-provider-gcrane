@@ -75,16 +75,24 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 
 	if data.DockerConfig.ValueString() != "" {
 		randBytes := make([]byte, 16)
-		rand.Read(randBytes)
+		_, err := rand.Read(randBytes)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating randomness for temporary Docker config",
+				fmt.Sprintf("Unable to randomness Docker config: %s", err.Error()),
+			)
+			return
+		}
 		randomDir := hex.EncodeToString(randBytes)
 		dockerConfigDir := filepath.Join(os.TempDir(), randomDir)
 
-		err := os.Mkdir(dockerConfigDir, 0700)
+		err = os.Mkdir(dockerConfigDir, 0700)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error creating directory for temporary Docker config",
 				fmt.Sprintf("Unable to create directory for Docker config %s: %s", dockerConfigDir, err.Error()),
 			)
+			return
 		}
 
 		dockerConfig := filepath.Join(dockerConfigDir, "config.json")
@@ -94,18 +102,21 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 				"Error creating temporary docker.config",
 				fmt.Sprintf("Unable to create temporary file for Docker config %s: %s", dockerConfig, err.Error()),
 			)
+			return
 		}
 		if _, err := f.Write([]byte(data.DockerConfig.ValueString())); err != nil {
 			resp.Diagnostics.AddError(
 				"Unable to write temporary Docker config",
 				fmt.Sprintf("Unable to create temporary file for Docker config %s: %s", dockerConfig, err.Error()),
 			)
+			return
 		}
 		if err := f.Close(); err != nil {
 			resp.Diagnostics.AddError(
 				"Unable to close temporary Docker config",
 				fmt.Sprintf("Unable to close temporary file for Docker config %s: %s", dockerConfig, err.Error()),
 			)
+			return
 		}
 
 		tflog.Trace(ctx, "Temporary Docker config created", map[string]interface{}{

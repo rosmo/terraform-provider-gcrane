@@ -196,8 +196,6 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	imagesList := make([]types.Object, 0)
-
 	childList, diags := types.ListValueFrom(ctx, types.StringType, tags.Children)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -245,8 +243,7 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	imagesList = append(data.Images, imagesObject)
-	data.Images = imagesList
+	data.Images = append(data.Images, imagesObject)
 
 	if len(tags.Manifests) == 0 && len(tags.Children) == 0 {
 		for _, tag := range tags.Tags {
