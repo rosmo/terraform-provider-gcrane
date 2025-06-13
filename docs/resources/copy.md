@@ -3,12 +3,12 @@
 page_title: "gcrane_copy Resource - gcrane"
 subcategory: ""
 description: |-
-  Example resource
+  Copies container images between repositories
 ---
 
 # gcrane_copy (Resource)
 
-Example resource
+Copies container images between repositories
 
 ## Example Usage
 
@@ -16,7 +16,7 @@ Example resource
 resource "gcrane_copy" "copied_image" {
   recursive = false
 
-  source      = "artifactory.net/foo"
+  source      = "google/cloud-sdk:slim"
   destination = "europe-west4-docker.pkg.dev/my-project/my-repo/my-image:latest"
 }
 ```

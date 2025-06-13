@@ -87,7 +87,7 @@ func (d *GcraneListDataSource) Metadata(ctx context.Context, req datasource.Meta
 
 func (d *GcraneListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
+		Description:         "Fetch a list of container images from repository",
 		MarkdownDescription: "Fetch a list of container images from repository",
 
 		Attributes: map[string]schema.Attribute{

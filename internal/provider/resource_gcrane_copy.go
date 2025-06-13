@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/gcrane"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -47,8 +48,8 @@ func (r *CopyResource) Metadata(ctx context.Context, req resource.MetadataReques
 func (r *CopyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Example resource",
-
+		MarkdownDescription: "Copies container images between repositories",
+		Description:         "Copies container images between repositories",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -74,9 +75,9 @@ func (r *CopyResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			"destination": schema.StringAttribute{
 				MarkdownDescription: "Destination for copy",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				//PlanModifiers: []planmodifier.String{
+				//		stringplanmodifier.RequiresReplace(),
+				//	},
 			},
 		},
 	}
@@ -104,6 +105,10 @@ func (r *CopyResource) Configure(ctx context.Context, req resource.ConfigureRequ
 
 func (r *CopyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data CopyResourceModel
+
+	tflog.Trace(ctx, "Going to copy stuff", map[string]interface{}{
+		"DOCKER_CONFIG": os.Getenv("DOCKER_CONFIG"),
+	})
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)

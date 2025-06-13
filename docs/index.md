@@ -3,12 +3,19 @@
 page_title: "gcrane Provider"
 subcategory: ""
 description: |-
-  Terraform provider for gcrane.
+  Terraform provider for gcrane https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md.
+  Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
+  Does not require gcrane or Docker installed. You can specify a Docker config JSON file as a string
+  in the provider configuration block, which will then be used during operations.
 ---
 
 # gcrane Provider
 
-Terraform provider for gcrane.
+Terraform provider for [gcrane](https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md).
+
+Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
+Does not require gcrane or Docker installed. You can specify a Docker config JSON file as a string
+in the provider configuration block, which will then be used during operations.
 
 
 
@@ -17,4 +24,4 @@ Terraform provider for gcrane.
 
 ### Optional
 
-- `docker_config` (String) Contents of docker.config
+- `docker_config` (String) Contents of Docker config file (JSON)

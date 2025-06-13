@@ -14,7 +14,7 @@ Fetch a list of container images from repository
 
 ```terraform
 data "gcrane_list" "images" {
-  repository = "artifactory.net/foo"
+  repository = "google/cloud-sdk:slim"
 }
 ```
 

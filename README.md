@@ -2,27 +2,35 @@
 
 Terraform provider for [gcrane](https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md).
 
+Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
+Does not require `gcrane` or Docker installed.
+
 ```hcl
 # The provider creates a temporary Docker config
 provider "gcrane" {
   docker_config = <<-EOT
     {
-        credHelpers = {
-            "europe-west4-docker.pkg.dev" = "gcloud"
-        }
+      "auths": {
+        "https://index.docker.io/v1/": {
+          "auth": "12345678...abc..."
+        },
+      }
+      "credHelpers": {
+        "europe-west4-docker.pkg.dev": "gcloud"
+      }
     }
   EOT
 }
 
 resource "gcrane_copy" "copied_image" {
-    recursive = false
+  recursive = false
 
-    source = "artifactory.net/foo"
-    destination = "europe-west4-docker.pkg.dev/my-project/my-repo/my-image:latest"
+  source = "google/cloud-sdk:slim"
+  destination = "europe-west4-docker.pkg.dev/my-project/my-repo/my-image:latest"
 }
 
 data "gcrane_list" "images" {
-    repository = "artifactory.net/foo"
+  repository = "google/cloud-sdk:alpine"
 }
 ```
 
