@@ -1,12 +1,22 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
+// Copyright 2025 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 package provider
 
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/gcrane"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -29,7 +39,7 @@ func NewCopyResource() resource.Resource {
 
 // CopyResource defines the resource implementation.
 type CopyResource struct {
-	client *http.Client
+	Client *GcraneData
 }
 
 // CopyResourceModel describes the resource data model.
@@ -47,8 +57,8 @@ func (r *CopyResource) Metadata(ctx context.Context, req resource.MetadataReques
 func (r *CopyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Example resource",
-
+		MarkdownDescription: "Copies container images between repositories",
+		Description:         "Copies container images between repositories",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -74,9 +84,9 @@ func (r *CopyResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			"destination": schema.StringAttribute{
 				MarkdownDescription: "Destination for copy",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				//PlanModifiers: []planmodifier.String{
+				//		stringplanmodifier.RequiresReplace(),
+				//	},
 			},
 		},
 	}
@@ -88,22 +98,25 @@ func (r *CopyResource) Configure(ctx context.Context, req resource.ConfigureRequ
 		return
 	}
 
-	client, ok := req.ProviderData.(*http.Client)
-
+	client, ok := req.ProviderData.(*GcraneData)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *GcraneData, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
 	}
 
-	r.client = client
+	r.Client = client
 }
 
 func (r *CopyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data CopyResourceModel
+
+	tflog.Trace(ctx, "Going to copy stuff", map[string]interface{}{
+		"DOCKER_CONFIG": os.Getenv("DOCKER_CONFIG"),
+	})
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -112,9 +125,27 @@ func (r *CopyResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	var err error
+	err = r.Client.Setup(ctx, *r.Client)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Could not setup provider",
+			err.Error(),
+		)
+		return
+	}
+	defer func() {
+		err := r.Client.Cleanup(ctx, *r.Client)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Could not clean up provider",
+				err.Error(),
+			)
+		}
+	}()
+
 	data.Id = data.Destination
 
-	var err error
 	if data.Recursive.ValueBool() {
 		err = gcrane.CopyRepository(ctx, data.Source.ValueString(), data.Destination.ValueString(), gcrane.WithContext(ctx))
 	} else {
