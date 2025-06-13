@@ -1,28 +1,41 @@
-# Terraform Provide for gcrane
+# Terraform Provider for gcrane
 
 Terraform provider for [gcrane](https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md).
+
+Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
+Does not require `gcrane` or Docker installed.
+
+This is a
+[community maintained provider](https://www.terraform.io/docs/providers/type/community-index.html)
+and not an official Google or Hashicorp product.
+
 
 ```hcl
 # The provider creates a temporary Docker config
 provider "gcrane" {
   docker_config = <<-EOT
     {
-        credHelpers = {
-            "europe-west4-docker.pkg.dev" = "gcloud"
-        }
+      "auths": {
+        "https://index.docker.io/v1/": {
+          "auth": "12345678...abc..."
+        },
+      }
+      "credHelpers": {
+        "europe-west4-docker.pkg.dev": "gcloud"
+      }
     }
   EOT
 }
 
 resource "gcrane_copy" "copied_image" {
-    recursive = false
+  recursive = false
 
-    source = "artifactory.net/foo"
-    destination = "europe-west4-docker.pkg.dev/my-project/my-repo/my-image:latest"
+  source = "google/cloud-sdk:slim"
+  destination = "europe-west4-docker.pkg.dev/my-project/my-repo/my-image:latest"
 }
 
 data "gcrane_list" "images" {
-    repository = "artifactory.net/foo"
+  repository = "google/cloud-sdk"
 }
 ```
 
@@ -59,18 +72,3 @@ Then commit the changes to `go.mod` and `go.sum`.
 
 Fill this in for each provider
 
-## Developing the Provider
-
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
-
-To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
-
-To generate or update documentation, run `make generate`.
-
-In order to run the full suite of Acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```shell
-make testacc
-```

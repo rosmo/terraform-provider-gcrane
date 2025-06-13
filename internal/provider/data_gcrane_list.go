@@ -6,7 +6,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -28,7 +27,7 @@ func NewGcraneListDataSource() datasource.DataSource {
 
 // GcraneListDataSource defines the data source implementation.
 type GcraneListDataSource struct {
-	client *http.Client
+	Client *GcraneData
 }
 
 type GcraneListDataSourceImageModel struct {
@@ -36,13 +35,13 @@ type GcraneListDataSourceImageModel struct {
 	MediaType      types.String `tfsdk:"media_type"`
 	Created        types.Int64  `tfsdk:"time_created_ms"`
 	Uploaded       types.Int64  `tfsdk:"time_uploaded_ms"`
-	Tags           types.List   `tfsdk:"tags"`
+	Tags           types.Set    `tfsdk:"tags"`
 }
 
 type GcraneListDataSourceImagesModel struct {
-	Manifests types.Map  `tfsdk:"manifests"`
-	Tags      types.List `tfsdk:"tags"`
-	Children  types.List `tfsdk:"children"`
+	Manifests types.Map `tfsdk:"manifests"`
+	Tags      types.Set `tfsdk:"tags"`
+	Children  types.Set `tfsdk:"children"`
 }
 
 // GcraneListDataSourceModel describes the data source data model.
@@ -58,7 +57,7 @@ func (o GcraneListDataSourceImageModel) AttributeTypes() map[string]attr.Type {
 		"media_type":       types.StringType,
 		"time_created_ms":  types.Int64Type,
 		"time_uploaded_ms": types.Int64Type,
-		"tags": types.ListType{
+		"tags": types.SetType{
 			ElemType: types.StringType,
 		},
 	}
@@ -72,10 +71,10 @@ func (o GcraneListDataSourceImagesModel) AttributeTypes() map[string]attr.Type {
 				AttrTypes: imageModel.AttributeTypes(),
 			},
 		},
-		"tags": types.ListType{
+		"tags": types.SetType{
 			ElemType: types.StringType,
 		},
-		"children": types.ListType{
+		"children": types.SetType{
 			ElemType: types.StringType,
 		},
 	}
@@ -87,7 +86,7 @@ func (d *GcraneListDataSource) Metadata(ctx context.Context, req datasource.Meta
 
 func (d *GcraneListDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
+		Description:         "Fetch a list of container images from repository",
 		MarkdownDescription: "Fetch a list of container images from repository",
 
 		Attributes: map[string]schema.Attribute{
@@ -99,7 +98,7 @@ func (d *GcraneListDataSource) Schema(ctx context.Context, req datasource.Schema
 				MarkdownDescription: "Identifier",
 				Computed:            true,
 			},
-			"images": schema.ListNestedAttribute{
+			"images": schema.SetNestedAttribute{
 				MarkdownDescription: "Output of list operation",
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
@@ -119,7 +118,7 @@ func (d *GcraneListDataSource) Schema(ctx context.Context, req datasource.Schema
 									"time_uploaded_ms": schema.Int64Attribute{
 										Computed: true,
 									},
-									"tags": schema.ListAttribute{
+									"tags": schema.SetAttribute{
 										ElementType: types.StringType,
 										Computed:    true,
 									},
@@ -127,11 +126,11 @@ func (d *GcraneListDataSource) Schema(ctx context.Context, req datasource.Schema
 							},
 							Computed: true,
 						},
-						"children": schema.ListAttribute{
+						"children": schema.SetAttribute{
 							ElementType: types.StringType,
 							Computed:    true,
 						},
-						"tags": schema.ListAttribute{
+						"tags": schema.SetAttribute{
 							ElementType: types.StringType,
 							Computed:    true,
 						},
@@ -148,18 +147,18 @@ func (d *GcraneListDataSource) Configure(ctx context.Context, req datasource.Con
 		return
 	}
 
-	client, ok := req.ProviderData.(*http.Client)
+	client, ok := req.ProviderData.(*GcraneData)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *http.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *GcraneData, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
 	}
 
-	d.client = client
+	d.Client = client
 }
 
 func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -171,6 +170,26 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	var err error
+	err = d.Client.Setup(ctx, *d.Client)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Could not setup provider",
+			err.Error(),
+		)
+		return
+	}
+	defer func() {
+		err := d.Client.Cleanup(ctx, *d.Client)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Could not clean up provider",
+				err.Error(),
+			)
+		}
+	}()
+
 	data.Id = data.Repository
 
 	repo, err := name.NewRepository(data.Repository.ValueString())
@@ -196,15 +215,13 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	imagesList := make([]types.Object, 0)
-
-	childList, diags := types.ListValueFrom(ctx, types.StringType, tags.Children)
+	childList, diags := types.SetValueFrom(ctx, types.StringType, tags.Children)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	topTagsList, diags := types.ListValueFrom(ctx, types.StringType, tags.Tags)
+	topTagsList, diags := types.SetValueFrom(ctx, types.StringType, tags.Tags)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -217,7 +234,7 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 	manifestsMap := make(map[string]GcraneListDataSourceImageModel, 0)
 	for k, v := range tags.Manifests {
-		tagsList, diags := types.ListValueFrom(ctx, types.StringType, v.Tags)
+		tagsList, diags := types.SetValueFrom(ctx, types.StringType, v.Tags)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -245,8 +262,7 @@ func (d *GcraneListDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	imagesList = append(data.Images, imagesObject)
-	data.Images = imagesList
+	data.Images = append(data.Images, imagesObject)
 
 	if len(tags.Manifests) == 0 && len(tags.Children) == 0 {
 		for _, tag := range tags.Tags {

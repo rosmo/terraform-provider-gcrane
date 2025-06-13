@@ -5,9 +5,11 @@ package provider
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
-	"net/http"
 	"os"
+	"path/filepath"
+	"sync/atomic"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
@@ -16,6 +18,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+
+	"crypto/rand"
 )
 
 // Ensure GcraneProvider satisfies various provider interfaces.
@@ -36,6 +41,15 @@ type GcraneProviderModel struct {
 	DockerConfig types.String `tfsdk:"docker_config"`
 }
 
+type GcraneData struct {
+	DockerConfig     string
+	DockerConfigFile string
+	OriginalEnv      string
+	Setup            func(ctx context.Context, data interface{}) error
+	Cleanup          func(ctx context.Context, data interface{}) error
+	Counter          atomic.Int32
+}
+
 func (p *GcraneProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "gcrane"
 	resp.Version = p.version
@@ -43,9 +57,20 @@ func (p *GcraneProvider) Metadata(ctx context.Context, req provider.MetadataRequ
 
 func (p *GcraneProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Terraform provider for gcrane.",
+		MarkdownDescription: `Terraform provider for [gcrane](https://github.com/google/go-containerregistry/blob/main/cmd/gcrane/README.md).
+
+Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
+Does not require gcrane or Docker installed. You can specify a Docker config JSON file as a string
+in the provider configuration block, which will then be used during operations.
+
+This is a
+[community maintained provider](https://www.terraform.io/docs/providers/type/community-index.html)
+and not an official Google or Hashicorp product.
+		`,
 		Attributes: map[string]schema.Attribute{
 			"docker_config": schema.StringAttribute{
-				MarkdownDescription: "Contents of docker.config",
+				MarkdownDescription: "Contents of Docker config file (JSON)",
 				Optional:            true,
 			},
 		},
@@ -61,36 +86,85 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		return
 	}
 
-	if data.DockerConfig.ValueString() != "" {
-		f, err := os.CreateTemp("", "docker.config")
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error creating temporary docker.config",
-				"Unable to create temporary file for docker.config",
-			)
-		}
-		defer os.Remove(f.Name()) // clean up
+	providerData := GcraneData{
+		DockerConfigFile: "",
+		DockerConfig:     data.DockerConfig.ValueString(),
+		OriginalEnv:      os.Getenv("DOCKER_CONFIG"),
+		Setup: func(ctx context.Context, data interface{}) error {
+			gcraneData := data.(GcraneData)
+			gcraneData.Counter.Add(1)
+			if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
+				dockerConfigDir := filepath.Dir(gcraneData.DockerConfigFile)
+				err := os.Mkdir(dockerConfigDir, 0700)
+				if err != nil && !os.IsExist(err) {
+					return fmt.Errorf("Unable to create directory for Docker config %s: %s", dockerConfigDir, err.Error())
+				}
 
-		if _, err := f.Write([]byte(data.DockerConfig.ValueString())); err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to write temporary docker.config",
-				fmt.Sprintf("Unable to create temporary file for docker.config: %s", f.Name()),
-			)
-		}
-		if err := f.Close(); err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to close temporary docker.config",
-				fmt.Sprintf("Unable to close temporary file for docker.config: %s", f.Name()),
-			)
-		}
-		defer os.Remove(f.Name())
+				f, err := os.OpenFile(gcraneData.DockerConfigFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+				if err != nil {
+					return fmt.Errorf("Unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+				}
+				if _, err := f.Write([]byte(gcraneData.DockerConfig)); err != nil {
+					return fmt.Errorf("Unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+				}
+				if err := f.Close(); err != nil {
+					return fmt.Errorf("Unable to close temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+				}
 
-		os.Setenv("DOCKER_CONFIG", f.Name())
+				os.Setenv("DOCKER_CONFIG", dockerConfigDir)
+				tflog.Trace(ctx, "Using temporary Docker config", map[string]interface{}{
+					"directory": dockerConfigDir,
+					"file":      gcraneData.DockerConfigFile,
+				})
+			}
+			return nil
+		},
+		// Terrible emulation of provider teardown, see: https://github.com/hashicorp/terraform-plugin-sdk/issues/63
+		Cleanup: func(ctx context.Context, data interface{}) error {
+			gcraneData := data.(GcraneData)
+			gcraneData.Counter.Add(-1)
+			if gcraneData.Counter.Load() == 0 {
+				if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
+					tflog.Trace(ctx, "Cleaning up temporary Docker config", map[string]interface{}{
+						"file": gcraneData.DockerConfigFile,
+					})
+					err := os.Remove(gcraneData.DockerConfigFile)
+					if err != nil {
+						return fmt.Errorf("Unable to delete temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+					}
+				}
+				if gcraneData.OriginalEnv != "" {
+					tflog.Trace(ctx, "Restoring original DOCKER_CONFIG", map[string]interface{}{
+						"env": gcraneData.OriginalEnv,
+					})
+
+					os.Setenv("DOCKER_CONFIG", gcraneData.OriginalEnv)
+				}
+			}
+			return nil
+		},
 	}
 
-	client := http.DefaultClient
-	resp.DataSourceData = client
-	resp.ResourceData = client
+	if providerData.DockerConfig != "" {
+		randBytes := make([]byte, 16)
+		_, err := rand.Read(randBytes)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating randomness for temporary Docker config",
+				fmt.Sprintf("Unable to randomness Docker config: %s", err.Error()),
+			)
+			return
+		}
+		randomDir := hex.EncodeToString(randBytes)
+		dockerConfigDir := filepath.Join(os.TempDir(), randomDir)
+		dockerConfig := filepath.Join(dockerConfigDir, "config.json")
+		providerData.DockerConfigFile = dockerConfig
+	} else {
+		tflog.Trace(ctx, "No docker.config specified")
+	}
+
+	resp.DataSourceData = &providerData
+	resp.ResourceData = &providerData
 }
 
 func (p *GcraneProvider) Resources(ctx context.Context) []func() resource.Resource {

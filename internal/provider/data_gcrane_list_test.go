@@ -22,10 +22,11 @@ func TestAccExampleDataSource(t *testing.T) {
 				Config: testAccExampleDataSourceConfig,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
-						"data.scaffolding_example.test",
-						tfjsonpath.New("id"),
-						knownvalue.StringExact("example-id"),
-					),
+						"data.gcrane_list.images",
+						tfjsonpath.New("images").AtSliceIndex(0).AtMapKey("tags"),
+						knownvalue.SetPartial([]knownvalue.Check{
+							knownvalue.StringExact("latest"),
+						})),
 				},
 			},
 		},
@@ -33,7 +34,7 @@ func TestAccExampleDataSource(t *testing.T) {
 }
 
 const testAccExampleDataSourceConfig = `
-data "scaffolding_example" "test" {
-  configurable_attribute = "example"
+data "gcrane_list" "images" {
+  repository = "google/pause"
 }
 `
