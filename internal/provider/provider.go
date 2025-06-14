@@ -91,24 +91,27 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		DockerConfig:     data.DockerConfig.ValueString(),
 		OriginalEnv:      os.Getenv("DOCKER_CONFIG"),
 		Setup: func(ctx context.Context, data interface{}) error {
-			gcraneData := data.(GcraneData)
+			gcraneData, ok := data.(GcraneData)
+			if !ok {
+				return fmt.Errorf("received unexpected data structure")
+			}
 			gcraneData.Counter.Add(1)
 			if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
 				dockerConfigDir := filepath.Dir(gcraneData.DockerConfigFile)
 				err := os.Mkdir(dockerConfigDir, 0700)
 				if err != nil && !os.IsExist(err) {
-					return fmt.Errorf("Unable to create directory for Docker config %s: %s", dockerConfigDir, err.Error())
+					return fmt.Errorf("unable to create directory for Docker config %s: %s", dockerConfigDir, err.Error())
 				}
 
 				f, err := os.OpenFile(gcraneData.DockerConfigFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 				if err != nil {
-					return fmt.Errorf("Unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+					return fmt.Errorf("unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 				}
 				if _, err := f.Write([]byte(gcraneData.DockerConfig)); err != nil {
-					return fmt.Errorf("Unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+					return fmt.Errorf("unable to create temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 				}
 				if err := f.Close(); err != nil {
-					return fmt.Errorf("Unable to close temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+					return fmt.Errorf("unable to close temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 				}
 
 				os.Setenv("DOCKER_CONFIG", dockerConfigDir)
@@ -122,6 +125,9 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		// Terrible emulation of provider teardown, see: https://github.com/hashicorp/terraform-plugin-sdk/issues/63
 		Cleanup: func(ctx context.Context, data interface{}) error {
 			gcraneData := data.(GcraneData)
+			if !ok {
+				return fmt.Errorf("received unexpected data structure")
+			}
 			gcraneData.Counter.Add(-1)
 			if gcraneData.Counter.Load() == 0 {
 				if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
@@ -130,7 +136,7 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 					})
 					err := os.Remove(gcraneData.DockerConfigFile)
 					if err != nil {
-						return fmt.Errorf("Unable to delete temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
+						return fmt.Errorf("unable to delete temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 					}
 				}
 				if gcraneData.OriginalEnv != "" {
