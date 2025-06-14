@@ -14,7 +14,7 @@ Fetch a list of container images from repository
 
 ```terraform
 data "gcrane_list" "images" {
-  repository = "google/cloud-sdk:slim"
+  repository = "google/pause"
 }
 ```
 
@@ -28,16 +28,16 @@ data "gcrane_list" "images" {
 ### Read-Only
 
 - `id` (String) Identifier
-- `images` (Attributes List) Output of list operation (see [below for nested schema](#nestedatt--images))
+- `images` (Attributes Set) Output of list operation (see [below for nested schema](#nestedatt--images))
 
 <a id="nestedatt--images"></a>
 ### Nested Schema for `images`
 
 Read-Only:
 
-- `children` (List of String)
+- `children` (Set of String)
 - `manifests` (Attributes Map) (see [below for nested schema](#nestedatt--images--manifests))
-- `tags` (List of String)
+- `tags` (Set of String)
 
 <a id="nestedatt--images--manifests"></a>
 ### Nested Schema for `images.manifests`
@@ -46,6 +46,6 @@ Read-Only:
 
 - `image_size_bytes` (Number)
 - `media_type` (String)
-- `tags` (List of String)
+- `tags` (Set of String)
 - `time_created_ms` (Number)
 - `time_uploaded_ms` (Number)

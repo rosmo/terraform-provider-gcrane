@@ -7,6 +7,9 @@ description: |-
   Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
   Does not require gcrane or Docker installed. You can specify a Docker config JSON file as a string
   in the provider configuration block, which will then be used during operations.
+  This is a
+  community maintained provider https://www.terraform.io/docs/providers/type/community-index.html
+  and not an official Google or Hashicorp product.
 ---
 
 # gcrane Provider
@@ -16,6 +19,10 @@ Terraform provider for [gcrane](https://github.com/google/go-containerregistry/b
 Allows copying images between Docker registries and also fetching some details (like images, tags, etc).
 Does not require gcrane or Docker installed. You can specify a Docker config JSON file as a string
 in the provider configuration block, which will then be used during operations.
+
+This is a
+[community maintained provider](https://www.terraform.io/docs/providers/type/community-index.html)
+and not an official Google or Hashicorp product.
 
 
 
