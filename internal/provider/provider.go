@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -55,6 +56,7 @@ type GcraneData struct {
 	DockerConfig       string
 	DockerConfigFile   string
 	DockerIsConfigured atomic.Bool
+	ConfigLock         sync.Mutex
 	OriginalEnv        string
 	Setup              func(ctx context.Context, data interface{}) error
 	Cleanup            func(ctx context.Context, data interface{}) error
@@ -107,7 +109,9 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 				return fmt.Errorf("received unexpected data structure")
 			}
 			gcraneData.Counter.Add(1)
-			if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
+			if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" && !gcraneData.DockerIsConfigured.Load() {
+				gcraneData.DockerIsConfigured.Store(true)
+
 				dockerConfigDir := filepath.Dir(gcraneData.DockerConfigFile)
 				err := os.Mkdir(dockerConfigDir, 0700)
 				if err != nil && !os.IsExist(err) {
@@ -125,12 +129,13 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 					return fmt.Errorf("unable to close temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 				}
 
-				gcraneData.DockerIsConfigured.Store(true)
+				gcraneData.ConfigLock.Lock()
 				os.Setenv("DOCKER_CONFIG", dockerConfigDir)
 				tflog.Trace(ctx, "Using temporary Docker config", map[string]interface{}{
 					"directory": dockerConfigDir,
 					"file":      gcraneData.DockerConfigFile,
 				})
+				gcraneData.ConfigLock.Unlock()
 			}
 			return nil
 		},
@@ -144,6 +149,10 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 			gcraneData.Counter.Add(-1)
 			if gcraneData.Counter.Load() == 0 {
 				if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" && gcraneData.DockerIsConfigured.Load() {
+					gcraneData.DockerIsConfigured.Store(false)
+
+					gcraneData.ConfigLock.Lock()
+					defer gcraneData.ConfigLock.Unlock()
 					tflog.Trace(ctx, "Cleaning up temporary Docker config", map[string]interface{}{
 						"file": gcraneData.DockerConfigFile,
 					})
@@ -158,7 +167,6 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 					})
 
 					os.Setenv("DOCKER_CONFIG", gcraneData.OriginalEnv)
-					gcraneData.DockerIsConfigured.Store(false)
 				}
 			}
 			return nil
