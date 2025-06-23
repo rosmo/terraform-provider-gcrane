@@ -52,12 +52,13 @@ type GcraneProviderModel struct {
 }
 
 type GcraneData struct {
-	DockerConfig     string
-	DockerConfigFile string
-	OriginalEnv      string
-	Setup            func(ctx context.Context, data interface{}) error
-	Cleanup          func(ctx context.Context, data interface{}) error
-	Counter          atomic.Int32
+	DockerConfig       string
+	DockerConfigFile   string
+	DockerIsConfigured atomic.Bool
+	OriginalEnv        string
+	Setup              func(ctx context.Context, data interface{}) error
+	Cleanup            func(ctx context.Context, data interface{}) error
+	Counter            atomic.Int32
 }
 
 func (p *GcraneProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -124,6 +125,7 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 					return fmt.Errorf("unable to close temporary file for Docker config %s: %s", gcraneData.DockerConfigFile, err.Error())
 				}
 
+				gcraneData.DockerIsConfigured.Store(true)
 				os.Setenv("DOCKER_CONFIG", dockerConfigDir)
 				tflog.Trace(ctx, "Using temporary Docker config", map[string]interface{}{
 					"directory": dockerConfigDir,
@@ -141,7 +143,7 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 
 			gcraneData.Counter.Add(-1)
 			if gcraneData.Counter.Load() == 0 {
-				if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" {
+				if gcraneData.DockerConfig != "" && gcraneData.DockerConfigFile != "" && gcraneData.DockerIsConfigured.Load() {
 					tflog.Trace(ctx, "Cleaning up temporary Docker config", map[string]interface{}{
 						"file": gcraneData.DockerConfigFile,
 					})
@@ -156,6 +158,7 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 					})
 
 					os.Setenv("DOCKER_CONFIG", gcraneData.OriginalEnv)
+					gcraneData.DockerIsConfigured.Store(false)
 				}
 			}
 			return nil
