@@ -50,6 +50,7 @@ type GcraneProvider struct {
 // GcraneProviderModel describes the provider data model.
 type GcraneProviderModel struct {
 	DockerConfig types.String `tfsdk:"docker_config"`
+	TempDir      types.String `tfsdk:"temporary_directory"`
 }
 
 type GcraneData struct {
@@ -84,6 +85,10 @@ and not an official Google or Hashicorp product.
 		Attributes: map[string]schema.Attribute{
 			"docker_config": schema.StringAttribute{
 				MarkdownDescription: "Contents of Docker config file (JSON)",
+				Optional:            true,
+			},
+			"temporary_directory": schema.StringAttribute{
+				MarkdownDescription: "Temporary directory for Docker config (uses system temp dir by default)",
 				Optional:            true,
 			},
 		},
@@ -184,7 +189,14 @@ func (p *GcraneProvider) Configure(ctx context.Context, req provider.ConfigureRe
 			return
 		}
 		randomDir := hex.EncodeToString(randBytes)
-		dockerConfigDir := filepath.Join(os.TempDir(), randomDir)
+		tempDir := os.TempDir()
+		if data.TempDir.ValueString() != "" {
+			tempDir = data.TempDir.ValueString()
+		}
+		tflog.Trace(ctx, "Temporary directory for Docker config", map[string]interface{}{
+			"directory": tempDir,
+		})
+		dockerConfigDir := filepath.Join(tempDir, randomDir)
 		dockerConfig := filepath.Join(dockerConfigDir, "config.json")
 		providerData.DockerConfigFile = dockerConfig
 	} else {

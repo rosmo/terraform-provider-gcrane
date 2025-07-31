@@ -32,3 +32,4 @@ and not an official Google or Hashicorp product.
 ### Optional
 
 - `docker_config` (String) Contents of Docker config file (JSON)
+- `temporary_directory` (String) Temporary directory for Docker config (uses system temp dir by default)
